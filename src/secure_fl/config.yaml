@@ -1,0 +1,39 @@
+# So sánh bảo vệ cập nhật FL giữa 2 client và BS (KHÔNG có UAV/kênh): none | ckks_full | fas
+seed: 0
+he:
+  ring_dim: 8192
+  slots: 4096
+  scale_bits: 50
+  first_mod_bits: 60
+  # ĐO THẬT bằng OpenFHE trong container (tests/secure_fl/test_openfhe.py, 30/10/2026): ciphertext 132.121 B, phần giải mã 66.388 B
+  # (số cũ trong git 0babbe5^ là 131.819 / 66.334). Backend emulated đệm gói đúng cỡ này để đếm byte thật.
+  ct_bytes: 132121            # một ciphertext (UPLOAD / CSUM)
+  share_bytes: 66388          # một phần giải mã (PARTIAL_DEC)
+  # Thời gian tính toán MỖI ciphertext (giây, thô): cost_table.csv cũ dòng p = 1 (50 ciphertext) chia 50
+  t_enc_ct_s: 0.00652
+  t_pdec_ct_s: 0.0057
+  t_add_ct_s: 0.000067
+  t_fuse_ct_s: 0.00163
+  error_sigma: 1.1e-7         # độ lệch chuẩn sai số CKKS sau giải mã (max_abs_err cũ ≈ 5e-7); chỉ backend emulated dùng
+device:                       # giả lập thiết bị biên như Raspberry Pi 4 Model B: áp cho container client (run_fl_docker.py -> docker-compose.yml); BS không bị giới hạn
+  profile: raspberry_pi_4b    # Pi 4B: 4 nhân Cortex-A72 1,5 GHz, RAM 1/2/4/8 GB (bản 4 GB)
+  cpus: 1.6                   # số nhân tối đa mỗi container client; 1,6 là giá trị dự án đang dùng từ trước (docker-compose.yml cũ), không phải thông số phần cứng
+  mem_limit: 4g               # RAM tối đa mỗi container client (bản Pi 4 4 GB)
+  # Giới hạn này BẮT BUỘC, không có công tắc tắt: mọi script chạy trên thiết bị tự áp khi khởi động (secure_fl/devicelimit.py: enforce; Windows dùng Job Object, Docker do compose áp).
+  # Số luồng PyTorch của client là `threads` trong src/model/config.yaml (= 2, vừa với 1,6 nhân). Chưa có hệ số quy đổi thời gian máy phát triển -> Pi 4 (cần đo, xem plan.md mục 13).
+lock:
+  backend: emulated          # emulated (mô hình sai số CKKS, chạy được trên Windows) | openfhe (chỉ trong container Linux: run_fl_docker.py)
+  fas_p: 0.1
+  # Nhiễu = λ·RMS(phần rõ). Cái được bảo vệ là TRỌNG SỐ (to hơn nhiều so với Δ) nên lưới λ nhỏ hơn bản Δ cũ (0; 0,5; 1; 3).
+  fas_lams: [0.0, 0.01, 0.03, 0.1, 0.3, 1.0]   # λ = 0 chỉ để kiểm tra tính đúng (phải trùng none), không phải ứng viên
+  fas_bs_lams: [0.1]                           # FAS gốc (BS giữ khóa xáo K) — mốc yếu về bảo mật
+  noise_entropy: seeded       # seeded: nhiễu sinh từ seed để lặp lại được | os: entropy hệ điều hành (đúng thiết kế khi triển khai)
+  host: 127.0.0.1
+  base_port: 7100
+  timeout_s: 900              # chờ một tin nhắn tối đa
+  delta_acc: 0.005            # biên δ của cổng độ chính xác (0,5 điểm) — giá trị tạm, chưa được duyệt
+  # Đánh giá tấn công (BS dựng lại trọng số client k) TẠM TẮT từ 30/10/2026 theo yêu cầu người dùng. Mã collect.py/analyze.py giữ nguyên;
+  # server.py vẫn ghi capture/, client vẫn ghi truth/ nên bật lại được mà không phải chạy lại FL. Khi tắt: không có cổng 2, bảng xếp hạng chỉ xét độ chính xác và chi phí.
+  attack_enabled: false
+  leak_skill_margin: 0.1      # (chỉ dùng khi attack_enabled) cổng rò rỉ: skill = 1 - (sai số dựng lại / sai số khi đoán bằng tổng)^2 của BS không vượt biên này
+  attack_rounds: [0, 1, 10, 25, 50]            # (chỉ dùng khi attack_enabled) vòng 0 = trọng số huấn luyện cục bộ 150 epoch

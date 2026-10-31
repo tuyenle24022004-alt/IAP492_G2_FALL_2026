@@ -1,0 +1,73 @@
+# 4 container: bs, uav (ống kênh), client1, client2 trên một mạng riêng; OpenFHE THẬT. Chạy qua src/uav_channel/run_fl_uav.py
+# (đặt biến ARM, SEED, ROUNDS, MODEL, RUN_DIR, CHANNEL, BACKEND, PORT1, PORT2, BS_PORT, CLIENT_CPUS, CLIENT_MEM).
+# Client KHÔNG nối thẳng BS mà nối vào `uav`; `uav` giữ UPLOAD/PARTIAL_DEC đúng thời gian kênh rồi chuyển cho `bs`.
+# Dùng lại image doanfl-securefl và cách mount của docker/docker-compose.yml (không sửa file đó): mỗi bên chỉ thấy thứ nó được phép thấy.
+# Bản sao config của lượt chạy (số vòng, epoch, hạn chờ) được mount ĐÈ lên config thật trong container; file config thật không bị sửa.
+name: uav-fl
+services:
+  bs:
+    image: doanfl-securefl
+    container_name: uavfl-bs
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+    command: sh -c "python src/secure_fl/bs/server.py --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --port ${BS_PORT:-7100} --bind 0.0.0.0 --out /out"
+    volumes:
+      - ../..:/app/src:ro
+      - ${RUN_DIR}/config/secure_fl_config.yaml:/app/src/secure_fl/config.yaml:ro
+      - ${RUN_DIR}/bs:/out
+    networks: [net]
+
+  uav:
+    image: doanfl-securefl
+    container_name: uavfl-uav
+    depends_on: [bs]
+    command: sh -c "python src/uav_channel/uav/run_relay.py --channel ${CHANNEL} --bs-host bs --bs-port ${BS_PORT:-7100} --ports ${PORT1:-7201} ${PORT2:-7202} --out /out"
+    volumes:
+      - ../..:/app/src:ro
+      - ${RUN_DIR}/uav:/out
+    networks: [net]
+
+  client1:
+    image: doanfl-securefl
+    container_name: uavfl-client1
+    depends_on: [bs, uav]
+    cpus: ${CLIENT_CPUS:-1.6}       # giả lập Pi 4: giá trị lấy từ `device` trong src/secure_fl/config.yaml (run_fl_uav.py đặt biến)
+    mem_limit: ${CLIENT_MEM:-4g}
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+      DEVICE_LIMIT_BY: docker         # client.py chỉ chạy khi giới hạn Pi 4 do Docker áp (devicelimit.enforce)
+    command: sh -c "python src/secure_fl/client/client.py --dev 1 --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --model ${MODEL:-classifier} --host uav --port ${PORT1:-7201} --out /out"
+    volumes:
+      - ../..:/app/src:ro
+      - ${RUN_DIR}/config/secure_fl_config.yaml:/app/src/secure_fl/config.yaml:ro
+      - ${RUN_DIR}/config/model_config.yaml:/app/src/model/config.yaml:ro
+      - ../../../outputs/model/client1:/app/outputs/model/client1:ro
+      - ../../../outputs/model/shared:/app/outputs/model/shared:ro
+      - ${RUN_DIR}/client1:/out
+      - torchcache:/root/.cache/torch
+    networks: [net]
+
+  client2:
+    image: doanfl-securefl
+    container_name: uavfl-client2
+    depends_on: [bs, uav]
+    cpus: ${CLIENT_CPUS:-1.6}
+    mem_limit: ${CLIENT_MEM:-4g}
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+      DEVICE_LIMIT_BY: docker
+    command: sh -c "python src/secure_fl/client/client.py --dev 2 --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --model ${MODEL:-classifier} --host uav --port ${PORT2:-7202} --out /out"
+    volumes:
+      - ../..:/app/src:ro
+      - ${RUN_DIR}/config/secure_fl_config.yaml:/app/src/secure_fl/config.yaml:ro
+      - ${RUN_DIR}/config/model_config.yaml:/app/src/model/config.yaml:ro
+      - ../../../outputs/model/client2:/app/outputs/model/client2:ro
+      - ${RUN_DIR}/client2:/out
+      - torchcache:/root/.cache/torch
+    networks: [net]
+
+networks:
+  net: {}
+volumes:
+  torchcache:
+    name: secure-fl_torchcache        # dùng lại volume của docker/docker-compose.yml (cache torchvision), khỏi tải lại

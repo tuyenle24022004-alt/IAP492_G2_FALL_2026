@@ -1,0 +1,51 @@
+# Kênh vô tuyến và UAV relay — CHƯA ĐO trong đề tài hiện tại (đang so sánh mã hóa giữa client và BS, không UAV).
+seed: 0
+channel:
+  mode: uav_noma_pc
+  los_mode: mean
+  B: 1.0e6
+  fc: 2.0e9
+  P_dev_dBm: 23
+  P_uav_dBm: 30
+  NF_dB: 7
+  h_bs: 25
+  h_uav: 100
+  h_dev: 1.5
+  K_dB: 5
+  shadow_dB: 6
+  a2g: {a: 9.61, b: 0.16, eta_los_dB: 1, eta_nlos_dB: 20}
+  bs: [0, 0]
+  uav: [1500, 0]
+  devices: [[1800, 0], [2200, 0]]
+uav:
+  shaper_chunk: 16384
+  time_mode: real
+  virtual_below_bps: 2.0e5
+analysis:                     # cost_time.py: thời gian vòng theo kênh từ byte của secure_fl
+  t_max_s: 60                 # hạn thời gian vòng (giây, thang Pi 4) — giá trị tạm, chưa được duyệt
+  t_max_sweep_s: [10, 30, 60, 120, 600]
+  fidelity: 1.4
+  channel_rounds: 2000
+  late_max: 0.05
+
+# FL chạy THẬT qua ống kênh (run_fl_uav.py): MỌI thông số của đợt này đặt ở đây; bộ điều phối tạo bản sao config model/secure_fl
+# (đổi fl.rounds, fl.local_epochs, lock.timeout_s) và mount đè vào container, KHÔNG sửa file config thật của phần FL.
+fl_qua_kenh:
+  rounds: 4                   # số vòng FL, cộng thêm vòng 0 (rounds: 4 -> 5 lần truyền). Đề xuất 4; đủ như các lượt trước là 50
+  local_epochs: 1             # epoch cục bộ mỗi vòng (giữ 1 như bài báo và các lượt đã chạy)
+  seed: 42
+  model: classifier
+  arms: [none, ckks_full]     # không mã hóa, mã hóa 100% (OpenFHE thật trong container)
+  channels: [uav_noma_pc, direct_noma]   # có UAV, không UAV
+  chunk_bytes: 1460           # ống chuyển tiếp từng gói TCP cỡ này
+  ports: [7201, 7202]         # cổng ống nghe cho thiết bị 1 và 2
+  bs_port: 7100
+  held_types: [UPLOAD, PARTIAL_DEC]      # chỉ giữ hai loại tin này (chiều client -> BS); mọi tin khác và chiều xuống đi thẳng
+  timeout_margin: 2.0         # hệ số an toàn nhân vào thời gian chờ dài nhất khi đặt lock.timeout_s cho lượt chạy
+  timeout_min_s: 900          # không bao giờ thấp hơn hạn mặc định của secure_fl
+  compute_s_per_round: 30     # ước lượng thô thời gian tính mỗi vòng (chỉ để đặt hạn tổng của lượt chạy, không phải kết quả)
+  frame_overhead_B: {none: 64, ckks_full: 0}   # tiêu đề khung + msgpack ước lượng; chỉ để DỰ KIẾN, kết quả dùng byte đo thật
+  model_metrics: outputs/model/fedavg_50/metrics.json   # lấy số tham số M
+  out: outputs/uav_channel/fl_qua_kenh
+  targets_acc: [0.975, 0.98]  # mốc độ chính xác để báo "thời gian đạt"
+  tol: {rel: 0.05, abs_s: 0.03}          # dung sai khi đối chiếu thời gian giữ với byte/R: max(5%, 30 ms)

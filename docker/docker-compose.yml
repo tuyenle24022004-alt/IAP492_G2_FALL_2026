@@ -1,0 +1,61 @@
+# 3 container: bs, client1, client2 trên một mạng riêng. Chạy qua src/secure_fl/experiments/run_fl_docker.py
+# (đặt biến ARM, SEED, ROUNDS, MODEL, RUN_DIR, CLIENT_K_ARGS, BS_K_ARGS, BACKEND). Không UAV, không bóp tốc độ.
+# Cách ly: BS chỉ thấy src và thư mục kết quả của nó; mỗi client chỉ thấy đặc trưng/trọng số CỦA MÌNH (+ tập test cho client1);
+# khóa xáo K chỉ mount vào hai client (BS chỉ nhận qua docker-compose.fasbs.yml ở arm fasbs_*).
+name: secure-fl
+services:
+  bs:
+    image: doanfl-securefl
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: secure-fl-bs
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+    command: sh -c "python src/secure_fl/bs/server.py --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --port 7100 --bind 0.0.0.0 --out /out ${BS_K_ARGS:-}"
+    volumes:
+      - ../src:/app/src:ro
+      - ${RUN_DIR}/bs:/out
+    networks: [net]
+
+  client1:
+    image: doanfl-securefl
+    container_name: secure-fl-client1
+    depends_on: [bs]
+    cpus: ${CLIENT_CPUS:-1.6}       # giới hạn như Raspberry Pi 4: giá trị lấy từ `device` trong src/secure_fl/config.yaml (run_fl_docker.py đặt biến)
+    mem_limit: ${CLIENT_MEM:-4g}
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+      DEVICE_LIMIT_BY: docker         # client.py chỉ chạy khi giới hạn Pi 4 do Docker áp (devicelimit.enforce)
+    command: sh -c "python src/secure_fl/client/client.py --dev 1 --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --model ${MODEL:-classifier} --host bs --port 7100 --out /out ${CLIENT_K_ARGS:-}"
+    volumes:
+      - ../src:/app/src:ro
+      - ../outputs/model/client1:/app/outputs/model/client1:ro
+      - ../outputs/model/shared:/app/outputs/model/shared:ro
+      - ${RUN_DIR}/client1:/out
+      - ${RUN_DIR}/keys:/keys:ro
+      - torchcache:/root/.cache/torch
+    networks: [net]
+
+  client2:
+    image: doanfl-securefl
+    container_name: secure-fl-client2
+    depends_on: [bs]
+    cpus: ${CLIENT_CPUS:-1.6}
+    mem_limit: ${CLIENT_MEM:-4g}
+    environment:
+      SECURE_FL_BACKEND: ${BACKEND:-openfhe}
+      DEVICE_LIMIT_BY: docker
+    command: sh -c "python src/secure_fl/client/client.py --dev 2 --arm ${ARM} --seed ${SEED} --rounds ${ROUNDS} --model ${MODEL:-classifier} --host bs --port 7100 --out /out ${CLIENT_K_ARGS:-}"
+    volumes:
+      - ../src:/app/src:ro
+      - ../outputs/model/client2:/app/outputs/model/client2:ro
+      - ${RUN_DIR}/client2:/out
+      - ${RUN_DIR}/keys:/keys:ro
+      - torchcache:/root/.cache/torch
+    networks: [net]
+
+networks:
+  net: {}
+volumes:
+  torchcache: {}

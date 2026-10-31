@@ -1,0 +1,5 @@
+# CHỈ dùng cho arm fasbs_* (mô phỏng FAS gốc: BS cũng giữ khóa xáo K). Các arm khác BS KHÔNG có K.
+services:
+  bs:
+    volumes:
+      - ${RUN_DIR}/keys:/keys:ro

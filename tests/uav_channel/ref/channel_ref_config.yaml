@@ -1,0 +1,36 @@
+# Cấu hình kênh đã dùng để sinh channel_ref.json (hình học cũ: UAV 700 m, thiết bị 900 và 1.200 m).
+# KHÔNG đổi: test_channel.py so SINR của mã mới với tham chiếu này. Cấu hình đang dùng nằm ở src/uav_channel/config.yaml.
+seed: 0
+channel:
+  mode: uav_noma_pc
+  los_mode: mean
+  B: 1.0e6
+  fc: 2.0e9
+  P_dev_dBm: 23
+  P_uav_dBm: 30
+  NF_dB: 7
+  h_uav: 100
+  h_bs: 25
+  h_dev: 1.5
+  K_dB: 5
+  shadow_dB: 6
+  a2g:
+    a: 9.61
+    b: 0.16
+    eta_los_dB: 1
+    eta_nlos_dB: 20
+  shaper_chunk: 16384
+  shaping_tol: 0.05
+  time_scale: false
+  time_scale_floor_bps: 1.0e6
+  bs:
+  - 0
+  - 0
+  uav:
+  - 700
+  - 0
+  devices:
+  - - 900
+    - 0
+  - - 1200
+    - 0
